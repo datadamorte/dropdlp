@@ -1,0 +1,10 @@
+{
+  "name": "dropdlp",
+  "install": "bash ./.cursor/install.sh",
+  "terminals": [
+    {
+      "name": "dropdlp-gui",
+      "command": "source venv/bin/activate && export DISPLAY=${DISPLAY:-:1} && export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-ubuntu} && mkdir -p \"$XDG_RUNTIME_DIR\" && chmod 700 \"$XDG_RUNTIME_DIR\" && python yt_dlp_gui.py"
+    }
+  ]
+}
