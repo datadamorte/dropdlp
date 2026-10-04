@@ -231,6 +231,10 @@ def build_ytdlp_command(
     if cookies_browser and cookies_browser != "None":
         cmd.extend(["--cookies-from-browser", str(cookies_browser).lower()])
 
+    if options.get("impersonate"):
+        # Needed for Cloudflare-protected sites (requires curl_cffi in yt-dlp).
+        cmd.extend(["--extractor-args", "generic:impersonate"])
+
     if system == "Windows":
         cmd.append("--windows-filenames")
 

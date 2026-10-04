@@ -523,50 +523,73 @@ class DownloadThread(QThread):
 
     def run(self):
         try:
-            cmd = build_ytdlp_command(self.exe_path, self.url, self.options, self.output_path)
-            self.process = subprocess.Popen(cmd, **popen_kwargs())
-
-            for line in self.process.stdout:
-                if self._is_cancelled:
-                    break
-                line = line.strip()
-                if not line:
-                    continue
-                self.progress.emit(line)
-                info = parse_progress_line(line)
-                if not info:
-                    continue
-                if info.percent is not None:
-                    self.progress_percent.emit(info.percent)
-                parts = []
-                if info.percent is not None:
-                    parts.append(f"{info.percent}%")
-                if info.speed:
-                    parts.append(info.speed)
-                if info.eta:
-                    parts.append(f"ETA {info.eta}")
-                if info.postprocessing:
-                    parts.append("Processing…")
-                if info.destination:
-                    parts.append(os.path.basename(info.destination))
-                if parts:
-                    self.progress_status.emit("  ·  ".join(parts))
-
-            try:
-                self.process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                terminate_process(self.process)
-                self.error.emit("Download did not exit cleanly")
+            options = dict(self.options)
+            returncode = self._run_once(options)
+            if returncode is None:
                 return
+            if (
+                returncode != 0
+                and not self._is_cancelled
+                and self._needs_impersonate
+                and not options.get("impersonate")
+            ):
+                self.progress.emit("Cloudflare challenge detected — retrying with browser impersonation…")
+                options["impersonate"] = True
+                returncode = self._run_once(options)
+                if returncode is None:
+                    return
 
             if self._is_cancelled:
                 self.error.emit("Download cancelled by user")
-            elif self.process.returncode == 0:
+            elif returncode == 0:
                 self.finished.emit("Download completed successfully")
             else:
-                self.error.emit(f"Download failed with return code: {self.process.returncode}")
+                self.error.emit(f"Download failed with return code: {returncode}")
         except Exception as e:
             self.error.emit(f"Error: {e}")
+
+    def _run_once(self, options):
+        """Run yt-dlp once. Returns its exit code, or None if an error was already emitted."""
+        self._needs_impersonate = False
+        cmd = build_ytdlp_command(self.exe_path, self.url, options, self.output_path)
+        self.process = subprocess.Popen(cmd, **popen_kwargs())
+
+        for line in self.process.stdout:
+            if self._is_cancelled:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            self.progress.emit(line)
+            if "generic:impersonate" in line:
+                self._needs_impersonate = True
+            info = parse_progress_line(line)
+            if not info:
+                continue
+            if info.percent is not None:
+                self.progress_percent.emit(info.percent)
+            parts = []
+            if info.percent is not None:
+                parts.append(f"{info.percent}%")
+            if info.speed:
+                parts.append(info.speed)
+            if info.eta:
+                parts.append(f"ETA {info.eta}")
+            if info.postprocessing:
+                parts.append("Processing…")
+            if info.destination:
+                parts.append(os.path.basename(info.destination))
+            if parts:
+                self.progress_status.emit("  ·  ".join(parts))
+
+        try:
+            self.process.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            terminate_process(self.process)
+            self.error.emit("Download did not exit cleanly")
+            return None
+
+        return self.process.returncode
 
 
 class UpdateThread(QThread):
